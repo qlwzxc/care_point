@@ -1,0 +1,43 @@
+name: CarePoint CI/CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get source code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check Python syntax
+        run: python -m py_compile app.py
+
+      - name: Check application imports
+        run: python -c "from app import app; print('CarePoint imported successfully')"
+
+      - name: Build Docker image
+        run: docker build -t carepoint:latest .
+
+      - name: Save Docker image as artifact
+        run: docker save carepoint:latest -o carepoint-image.tar
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: carepoint-docker-image
+          path: carepoint-image.tar
+          retention-days: 30
