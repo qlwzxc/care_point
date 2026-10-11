@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CarePoint — приёмы клиники</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header class="top">
+    <a class="brand" href="/">
+        <span class="logo">C</span>
+        <span>
+            <b>CarePoint</b>
+            <small>Управление приёмами клиники</small>
+        </span>
+    </a>
+    <span class="active">● Сервис активен <a href="/health">Проверить ↗</a></span>
+</header>
+
+<main class="wrap">
+    <section class="hero">
+        <div>
+            <p class="eyebrow">ПАНЕЛЬ КЛИНИКИ</p>
+            <h1>Управление приёмами </h1>
+            <p class="muted">Расписание пациентов и загруженность врачей в одном месте.</p>
+        </div>
+        <a class="btn primary" href="#new">＋ Новая запись</a>
+    </section>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for cat, msg in messages %}
+                <div class="flash {{ cat }}">{{ msg }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <section class="stats">
+        <article>
+            <small>Всего записей</small>
+            <strong>{{ total }}</strong>
+            <span>В системе</span>
+        </article>
+        <article>
+            <small>Записей на сегодня</small>
+            <strong>{{ today_count }}</strong>
+            <span>Без отменённых</span>
+        </article>
+        <article>
+            <small>Отменено</small>
+            <strong>{{ cancelled }}</strong>
+            <span>Приёмов</span>
+        </article>
+        <article>
+            <small>Посещения сайта за час</small>
+            <strong>{{ visits }}</strong>
+            <span>Метрика приложения</span>
+        </article>
+    </section>
+
+    <section class="panel" id="new">
+        <div class="heading">
+            <div>
+                <p class="eyebrow">РЕГИСТРАТУРА</p>
+                <h2>Создать запись</h2>
+            </div>
+            <small class="muted">* обязательные поля</small>
+        </div>
+
+        <form action="/appointments/create" method="post" class="form">
+            <label>
+                ФИО пациента *
+                <input name="patient_name" required
+                       placeholder="Иванов Иван Иванович">
+            </label>
+
+            <label>
+                Телефон *
+                <input name="phone" required type="tel"
+                       maxlength="25"
+                       pattern="[0-9+()\s-]+"
+                       title="Введите телефон с 10–15 цифрами"
+                       placeholder="+7 900 000-00-00">
+            </label>
+
+            <label>
+                Врач *
+                <select name="doctor" required>
+                    <option value="">Выберите врача</option>
+                    {% for d in doctors %}
+                        <option>{{ d }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+
+            <label>
+                Дата *
+                <input name="appointment_date" type="date"
+                       min="{{ today }}" max="{{ latest_day }}" required>
+            </label>
+
+            <label>
+                Время *
+                <input name="appointment_time" type="time" required>
+            </label>
+
+            <label class="wide">
+                Причина обращения
+                <textarea name="reason" rows="2" maxlength="500"
+                          placeholder="Краткий комментарий"></textarea>
+            </label>
+
+            <div class="wide">
+                <button class="btn primary">Сохранить запись</button>
+                <span class="muted note">
+                    Двойная запись врача на одно время запрещена.
+                </span>
+            </div>
+        </form>
+    </section>
+
+    <section class="panel">
+        <div class="heading">
+            <div>
+                <p class="eyebrow">РАСПИСАНИЕ</p>
+                <h2>Записи пациентов</h2>
+            </div>
+            <span class="pill">{{ appointments|length }} в списке</span>
+        </div>
+
+        <form class="filters" method="get">
+            <input name="q" value="{{ search }}"
+                   placeholder="Поиск: пациент, телефон, врач">
+
+            <input name="date" type="date" value="{{ date_filter }}">
+
+            <select name="status">
+                <option value="">Все статусы</option>
+                {% for s in statuses %}
+                    <option {% if status_filter == s %}selected{% endif %}>
+                        {{ s }}
+                    </option>
+                {% endfor %}
+            </select>
+
+            <button class="btn secondary">Найти</button>
+            <a class="clear" href="/">Сбросить</a>
+        </form>
+
+        {% if appointments %}
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Пациент</th>
+                            <th>Врач</th>
+                            <th>Дата / время</th>
+                            <th>Причина</th>
+                            <th>Статус</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for a in appointments %}
+                            <tr>
+                                <td>
+                                    <b>{{ a['patient_name'] }}</b>
+                                    <small>{{ a['phone'] }}</small>
+                                </td>
+                                <td>{{ a['doctor'] }}</td>
+                                <td>
+                                    <b>{{ a['appointment_date'] }}</b>
+                                    <small>{{ a['appointment_time'] }}</small>
+                                </td>
+                                <td>{{ a['reason'] or '—' }}</td>
+                                <td>
+                                    <span class="badge {% if a['status'] == 'Состоялась' %}done{% elif a['status'] == 'Отменена' %}cancelled{% else %}planned{% endif %}">
+                                        {{ a['status'] }}
+                                    </span>
+                                </td>
+                                <td class="actions">
+                                    <details>
+                                        <summary>Изменить</summary>
+
+                                        <form class="edit" method="post"
+                                              action="/appointments/{{ a['id'] }}/edit">
+                                            <label>
+                                                ФИО
+                                                <input name="patient_name" required
+                                                       value="{{ a['patient_name'] }}">
+                                            </label>
+
+                                            <label>
+                                                Телефон
+                                                <input name="phone" required type="tel"
+                                                       maxlength="25"
+                                                       pattern="[0-9+()\s-]+"
+                                                       title="Введите телефон с 10–15 цифрами"
+                                                       value="{{ a['phone'] }}">
+                                            </label>
+
+                                            <label>
+                                                Врач
+                                                <select name="doctor" required>
+                                                    {% for d in doctors %}
+                                                        <option {% if d == a['doctor'] %}selected{% endif %}>
+                                                            {{ d }}
+                                                        </option>
+                                                    {% endfor %}
+                                                </select>
+                                            </label>
+
+                                            <label>
+                                                Дата
+                                                <input type="date" name="appointment_date"
+                                                       min="{{ today }}"
+                                                       max="{{ latest_day }}" required
+                                                       value="{{ a['appointment_date'] }}">
+                                            </label>
+
+                                            <label>
+                                                Время
+                                                <input type="time" name="appointment_time"
+                                                       required value="{{ a['appointment_time'] }}">
+                                            </label>
+
+                                            <label>
+                                                Статус
+                                                <select name="status">
+                                                    {% for s in statuses %}
+                                                        <option {% if s == a['status'] %}selected{% endif %}>
+                                                            {{ s }}
+                                                        </option>
+                                                    {% endfor %}
+                                                </select>
+                                            </label>
+
+                                            <label class="wide">
+                                                Причина
+                                                <textarea name="reason" maxlength="500">{{ a['reason'] }}</textarea>
+                                            </label>
+
+                                            <button class="btn primary wide">
+                                                Сохранить
+                                            </button>
+                                        </form>
+                                    </details>
+
+                                    <form method="post"
+                                          action="/appointments/{{ a['id'] }}/delete"
+                                          onsubmit="return confirm('Удалить запись?')">
+                                        <button class="delete">Удалить</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="empty">
+                <h3>Записей пока нет</h3>
+                <p>Создайте первую запись или измените параметры поиска.</p>
+            </div>
+        {% endif %}
+    </section>
+
+    <section class="panel">
+        <div class="heading">
+            <div>
+                <p class="eyebrow">ДЛЯ РУКОВОДИТЕЛЯ</p>
+                <h2>Загруженность врачей</h2>
+            </div>
+            <small class="muted">Сегодня и будущие даты</small>
+        </div>
+
+        {% if doctor_load %}
+            <div class="loads">
+                {% for d in doctor_load %}
+                    <div class="load">
+                        <span>{{ d['doctor'] }}</span>
+                        <div class="track">
+                            <i style="width:{{ [d['amount'] * 12, 100]|min }}%"></i>
+                        </div>
+                        <b>{{ d['amount'] }}</b>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="muted">
+                Пока нет будущих записей для расчёта загруженности.
+            </p>
+        {% endif %}
+    </section>
+
+    <footer>
+        CarePoint · Учебный прототип
+        <span>
+            Время работы: {{ uptime }} сек. ·
+            <a href="/metrics">Технические метрики</a>
+        </span>
+    </footer>
+</main>
+
+<script>
+// Дополнительная проверка телефона в браузере.
+// Серверная проверка в app.py тоже обязательна.
+document.querySelectorAll('input[name="phone"]').forEach((input) => {
+    const validatePhone = () => {
+        const value = input.value.trim();
+        const digits = value.replace(/\D/g, '');
+        let message = '';
+
+        if (value && !/^[0-9+()\s-]+$/.test(value)) {
+            message = 'Используйте только цифры, пробелы и символы + ( ) -.';
+        } else if (
+            value.includes('+') &&
+            (value.indexOf('+') !== value.lastIndexOf('+') ||
+             !value.startsWith('+'))
+        ) {
+            message = 'Знак + можно поставить только в начале номера.';
+        } else if (value && (digits.length < 10 || digits.length > 15)) {
+            message = 'Телефон должен содержать от 10 до 15 цифр.';
+        }
+
+        input.setCustomValidity(message);
+    };
+
+    input.addEventListener('input', validatePhone);
+
+    input.form.addEventListener('submit', (event) => {
+        validatePhone();
+
+        if (!input.checkValidity()) {
+            event.preventDefault();
+            input.reportValidity();
+        }
+    });
+});
+</script>
+</body>
+</html>
